@@ -19,6 +19,7 @@ class AdminPage extends Singleton
 
     public static function render(): void
     {
-        echo 123;
+
+
     }
 }
