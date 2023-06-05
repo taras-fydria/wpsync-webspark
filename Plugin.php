@@ -2,6 +2,7 @@
 
 namespace WpsyncWebspark;
 
+use WpsyncWebspark\Inc\AdminPage;
 use WpsyncWebspark\Inc\Singleton;
 use WpsyncWebspark\Inc\SyncProducts;
 use WpsyncWebspark\Inc\TaskSchedule;
@@ -33,8 +34,8 @@ class Plugin extends Singleton
     {
         register_activation_hook(__DIR__ . '/wpsync-webspark.php', [__CLASS__, 'activate']);
         register_deactivation_hook(__DIR__ . '/wpsync-webspark.php', [__CLASS__, 'deactivate']);
-        add_action('wp_loaded', ['WpsyncWebspark\Inc\TaskSchedule', 'scheduled_sync']);
-        add_action('admin_menu', ['WpsyncWebspark\Inc\AdminPage', 'register_page']);
+        add_action('admin_menu', [AdminPage::class, 'register_page']);
+        add_action('wp_loaded', [TaskSchedule::class, 'scheduled_sync']);
     }
 
     public static function activate(): void

@@ -31,37 +31,40 @@ class SyncProducts extends Singleton
             $response_code = wp_remote_retrieve_response_code($response);
 
             $proceed_products_id = [];
-            echo '<pre>';
-            var_dump($response_code);
-            echo '</pre>';
+
             if ($response_code === 200) {
                 $body_json = wp_remote_retrieve_body($response);
                 $data = json_decode($body_json, true);
-                $products = !empty($data['data']) ? array_map(['WpsyncWebspark\Inc\ProductInput', 'build_item'], $data['data']) : [];
+                $products = !empty($data['data']) ? array_map([ProductInput::class, 'build_item'], $data['data']) : [];
 
                 if (!empty($products)) {
                     /** Process each product from the API
                      * @var $product ProductInput
                      */
 
-                    foreach ($products as $product) {
 
-                        $product_index = array_search($product->sku, $existing_skus);
+                    $array_chunks = array_chunk($products, 100);
+                    foreach ($array_chunks as $chunk) {
 
-                        if (gettype($product_index) === 'integer' && !$product_index < 0) {
-                            // Create a new product
-                            $product_id = $existing_products_id[$product_index];
-                            $proceed_products_id[] = self::update_product($product_id, $product);
-                        } else {
-                            // Update the existing product
-                            $proceed_products_id[] = self::create_product($product);
+                        foreach ($chunk as $product) {
+
+                            $product_index = array_search($product->sku, $existing_skus);
+                            if (gettype($product_index) === 'integer' && $product_index >= 0) {
+                                // Create a new product
+                                $product_id = $existing_products_id[$product_index];
+                                $proceed_products_id[] = self::update_product($product_id, $product);
+                            } else {
+                                // Update the existing product
+                                $proceed_products_id[] = self::create_product($product);
+                            }
                         }
                     }
+
                     //Delete products  which don't was in response
                     foreach ($existing_products_id as $existing_id) {
                         if (!in_array($existing_products_id, $proceed_products_id)) {
                             $wc_product = wc_get_product($existing_id);
-                            $wc_product->delete();
+                            if ($wc_product) $wc_product->delete(true);
                         }
                     }
 
@@ -106,7 +109,7 @@ class SyncProducts extends Singleton
         $wc_product->set_sku($product->sku);
         $wc_product->set_manage_stock(true);
         $wc_product->set_stock_quantity($product->stock_count);
-
+        $wc_product->set_status('publish');
         // Return the created product ID
         return $wc_product->save();
     }
@@ -125,5 +128,27 @@ class SyncProducts extends Singleton
         if ($wc_product->get_stock_quantity('') !== $product_data->stock_count) $wc_product->set_stock_quantity($product_data->stock_count);
 
         return $wc_product->save();
+    }
+
+    static function save_and_attach_amage_by_url(int $post_id, string $image_url)
+    {
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+
+        $thumbnail_id = get_post_thumbnail_id($post_id);
+        if ($thumbnail_id && get_post_meta($thumbnail_id, 'image_url') === $image_url){
+            return $thumbnail_id;
+        }
+//        media_de
+
+        // Download the image from the URL
+        $media_id = media_sideload_image($image_url, $post_id);
+        add_post_meta($post_id, 'image_url', $image_url);
+
+        // If the image was successfully attached, set it as the post thumbnail
+        if (!is_wp_error($media_id)) {
+            set_post_thumbnail($post_id, $media_id);
+        }
     }
 }
