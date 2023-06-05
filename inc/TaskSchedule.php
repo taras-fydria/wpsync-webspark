@@ -12,7 +12,6 @@ class TaskSchedule extends Singleton
         parent::__construct();
         self::$sync_product = SyncProducts::get_instance();
 
-        add_action('wp_loaded', [__CLASS__, 'scheduled_sync']);
         add_action(self::ACTION_NAME, [self::$sync_product, 'sync_products']);
     }
 

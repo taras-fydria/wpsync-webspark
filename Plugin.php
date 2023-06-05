@@ -31,8 +31,9 @@ class Plugin extends Singleton
 
     public static function register_hooks(): void
     {
-        register_activation_hook(__FILE__, [__CLASS__, 'activate']);
-        register_deactivation_hook(__FILE__, [__CLASS__, 'deactivate']);
+        register_activation_hook(__DIR__ . '/wpsync-webspark.php', [__CLASS__, 'activate']);
+        register_deactivation_hook(__DIR__ . '/wpsync-webspark.php', [__CLASS__, 'deactivate']);
+        add_action('wp_loaded', ['WpsyncWebspark\Inc\TaskSchedule', 'scheduled_sync']);
         add_action('admin_menu', ['WpsyncWebspark\Inc\AdminPage', 'register_page']);
     }
 
