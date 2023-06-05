@@ -48,7 +48,7 @@ class SyncProducts extends Singleton
              * @var $product ProductInput
              */
 
-            $array_chunks = array_chunk($products, 50);
+            $array_chunks = array_chunk(array_slice($products, 0, 100), 200);
 
             foreach ($array_chunks as $chunk) {
 
@@ -152,56 +152,69 @@ class SyncProducts extends Singleton
         if ($thumbnail_id) {
             wp_delete_attachment($thumbnail_id, true);
         }
+        require_once( ABSPATH . "/wp-load.php");
+        require_once( ABSPATH . "/wp-admin/includes/image.php");
+        require_once( ABSPATH . "/wp-admin/includes/file.php");
+        require_once( ABSPATH . "/wp-admin/includes/media.php");
 
-        require_once(ABSPATH . "/wp-load.php");
-        require_once(ABSPATH . "/wp-admin/includes/image.php");
-        require_once(ABSPATH . "/wp-admin/includes/file.php");
-        require_once(ABSPATH . "/wp-admin/includes/media.php");
-        $tmp = download_url($image_url);
-        if (is_wp_error($tmp)) return false;
+        // Download url to a temp file
+        $tmp = download_url( $image_url );
+        if ( is_wp_error( $tmp ) ) return false;
 
+        // Get the filename and extension ("photo.png" => "photo", "png")
         $filename = pathinfo($image_url, PATHINFO_FILENAME);
         $extension = pathinfo($image_url, PATHINFO_EXTENSION);
 
         // An extension is required or else WordPress will reject the upload
-        if (!$extension) {
+        if ( ! $extension ) {
             // Look up mime type, example: "/photo.png" -> "image/png"
-            $mime = mime_content_type($tmp);
-            $mime = is_string($mime) ? sanitize_mime_type($mime) : false;
+            $mime = mime_content_type( $tmp );
+            $mime = is_string($mime) ? sanitize_mime_type( $mime ) : false;
 
             // Only allow certain mime types because mime types do not always end in a valid extension (see the .doc example below)
             $mime_extensions = array(
                 // mime_type         => extension (no period)
-                'text/plain' => 'txt',
-                'text/csv' => 'csv',
+                'text/plain'         => 'txt',
+                'text/csv'           => 'csv',
                 'application/msword' => 'doc',
-                'image/jpg' => 'jpg',
-                'image/jpeg' => 'jpeg',
-                'image/gif' => 'gif',
-                'image/png' => 'png',
-                'video/mp4' => 'mp4',
+                'image/jpg'          => 'jpg',
+                'image/jpeg'         => 'jpeg',
+                'image/gif'          => 'gif',
+                'image/png'          => 'png',
+                'video/mp4'          => 'mp4',
             );
 
-            if (isset($mime_extensions[$mime])) {
+            if ( isset( $mime_extensions[$mime] ) ) {
                 // Use the mapped extension
                 $extension = $mime_extensions[$mime];
-            } else {
+            }else{
                 // Could not identify extension
-                unlink($tmp);
+                @unlink($tmp);
                 return false;
             }
         }
+
+
+
+        // Upload by "sideloading": "the same way as an uploaded file is handled by media_handle_upload"
         $args = array(
             'name' => "$filename.$extension",
             'tmp_name' => $tmp,
         );
-        // Download the image from the URL
-        $media_id = media_handle_sideload($args, 0);
-        add_post_meta($post_id, 'image_url', $image_url);
-        unlink($tmp);
+
+        // Do the upload
+        $attachment_id = media_handle_sideload( $args, 0, $title);
+
+        // Cleanup temp file
+        @unlink($tmp);
+
+        // Error uploading
+        if ( is_wp_error($attachment_id) ) return false;
+
+        // Success, return attachment ID (int)
         // If the image was successfully attached, set it as the post thumbnail
-        if (!is_wp_error($media_id)) {
-            return set_post_thumbnail($post_id, $media_id);
+        if (!is_wp_error($attachment_id)) {
+            return set_post_thumbnail($post_id, $attachment_id);
         } else {
             return false;
         }

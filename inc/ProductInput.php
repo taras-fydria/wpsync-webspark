@@ -13,17 +13,12 @@ class ProductInput
 
     public function __construct(array $item)
     {
-        if (isset($item['sku'])) $this->sku = $item['sku'];
-
-        if (isset($item['name'])) $this->name = $item['name'];
-
-        if (isset($item['description'])) $this->description = $item['description'];
-
-        if (isset($item['price'])) $this->price = $item['price'];
-
-        if (isset($item['picture'])) $this->picture_url = $item['picture'];
-
-        if (isset($item['in_stock'])) $this->stock_count = $item['in_stock'];
+        $this->sku = $item['sku'] ?? '';
+        $this->name = $item['name'] ?? '';
+        $this->description = $item['description'] ?? '';
+        $this->price = $item['price'] ?? '';
+        $this->picture_url = $item['picture'] ?? '';
+        $this->stock_count = $item['in_stock'] ?? 0;
     }
 
     public static function build_item(array $item): self
