@@ -3,6 +3,8 @@
 namespace WpsyncWebspark\Inc;
 
 use Exception;
+use WC_Data_Exception;
+use WC_Product_Simple;
 
 class SyncProducts extends Singleton
 {
@@ -15,11 +17,12 @@ class SyncProducts extends Singleton
         try {
             // Get the current list of products from the database
             $existing_products = self::get_existing_products();
-
-            // Create an array of existing product SKUs
-            foreach ($existing_products as $existing_product) {
-                $existing_skus[] = $existing_product->sku;
-            }
+            $existing_skus = !empty($existing_products) ? array_map(function ($item) {
+                return $item['sku'];
+            }, $existing_products) : [];
+            $existing_products_id = !empty($existing_products) ? array_map(function ($item) {
+                return $item['ID'];
+            }, $existing_products) : [];
 
             // Perform the GET request
             $response = wp_remote_get(self::API_URI, ['timeout' => 21]);
@@ -27,27 +30,41 @@ class SyncProducts extends Singleton
             // Check the response code
             $response_code = wp_remote_retrieve_response_code($response);
 
+            $proceed_products_id = [];
+            echo '<pre>';
+            var_dump($response_code);
+            echo '</pre>';
             if ($response_code === 200) {
                 $body_json = wp_remote_retrieve_body($response);
                 $data = json_decode($body_json, true);
                 $products = !empty($data['data']) ? array_map(['WpsyncWebspark\Inc\ProductInput', 'build_item'], $data['data']) : [];
+
                 if (!empty($products)) {
                     /** Process each product from the API
                      * @var $product ProductInput
                      */
+
                     foreach ($products as $product) {
-                        echo '<pre>';
-                        var_dump($product);
-                        echo '</pre>';
-                        $sku = $product->sku;
-                        if (!in_array($sku, $existing_skus)) {
+
+                        $product_index = array_search($product->sku, $existing_skus);
+
+                        if (gettype($product_index) === 'integer' && !$product_index < 0) {
                             // Create a new product
-                            self::create_product($product);
+                            $product_id = $existing_products_id[$product_index];
+                            $proceed_products_id[] = self::update_product($product_id, $product);
                         } else {
                             // Update the existing product
-                            self::update_product($product);
+                            $proceed_products_id[] = self::create_product($product);
                         }
                     }
+                    //Delete products  which don't was in response
+                    foreach ($existing_products_id as $existing_id) {
+                        if (!in_array($existing_products_id, $proceed_products_id)) {
+                            $wc_product = wc_get_product($existing_id);
+                            $wc_product->delete();
+                        }
+                    }
+
                 }
             } else {
                 // Handle the response code error
@@ -66,31 +83,47 @@ class SyncProducts extends Singleton
     {
         global $wpdb;
 
-        $query = "
-        SELECT ID, meta_value AS sku
-        FROM {$wpdb->posts} AS p
-        JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id
-        WHERE p.post_type = 'product'
-        AND p.post_status = 'publish'
-        AND pm.meta_key = '_sku'
-    ";
+        $query = "SELECT ID, meta_value AS sku FROM {$wpdb->posts} AS p JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id WHERE p.post_type = 'product' AND pm.meta_key = '_sku'";
 
         $results = $wpdb->get_results($query, ARRAY_A);
 
         return $results;
-        return [];
     }
 
     private static function delete_unavailable_products(array $existing_skus)
     {
     }
 
-    private static function create_product(mixed $product)
+    /**
+     * @throws WC_Data_Exception
+     */
+    private static function create_product(ProductInput $product): int
     {
+        $wc_product = new WC_Product_Simple();
+        $wc_product->set_name($product->name);
+        $wc_product->set_description($product->description);
+        $wc_product->set_price($product->price);
+        $wc_product->set_sku($product->sku);
+        $wc_product->set_manage_stock(true);
+        $wc_product->set_stock_quantity($product->stock_count);
+
+        // Return the created product ID
+        return $wc_product->save();
     }
 
-    private static function update_product(mixed $product)
+    private static function update_product(int $product_id, ProductInput $product_data): ?int
     {
+        $wc_product = wc_get_product($product_id);
+        if (!$wc_product) return null;
 
+        if ($wc_product->get_name('') !== $product_data->name) $wc_product->set_name($product_data->name);
+
+        if ($wc_product->get_description('') !== $product_data->description) $wc_product->set_description($product_data->description);
+
+        if ($wc_product->get_price('') !== $product_data->price) $wc_product->set_price($product_data->price);
+
+        if ($wc_product->get_stock_quantity('') !== $product_data->stock_count) $wc_product->set_stock_quantity($product_data->stock_count);
+
+        return $wc_product->save();
     }
 }

@@ -18,9 +18,6 @@ class Plugin extends Singleton
 
         self::$task_schedule = TaskSchedule::get_instance();
         self::register_hooks();
-        echo '<pre>';
-        SyncProducts::sync_products();
-        echo '</pre>';
     }
 
 
