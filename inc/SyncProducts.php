@@ -107,9 +107,12 @@ class SyncProducts extends Singleton
         $wc_product->set_description($product->description);
         $wc_product->set_price($product->price);
         $wc_product->set_sku($product->sku);
-        $wc_product->set_manage_stock(true);
+        $wc_product->set_manage_stock($product->stock_count);
         $wc_product->set_stock_quantity($product->stock_count);
         $wc_product->set_status('publish');
+        if ($product->picture_url !== '') {
+            self::save_and_attach_image_by_url($wc_product->get_id(), $product->picture_url);
+        }
         // Return the created product ID
         return $wc_product->save();
     }
@@ -127,20 +130,25 @@ class SyncProducts extends Singleton
 
         if ($wc_product->get_stock_quantity('') !== $product_data->stock_count) $wc_product->set_stock_quantity($product_data->stock_count);
 
+        self::save_and_attach_image_by_url($product_id, $product_data->picture_url);
+
         return $wc_product->save();
     }
 
-    static function save_and_attach_amage_by_url(int $post_id, string $image_url)
+    static function save_and_attach_image_by_url(int $post_id, string $image_url): int | bool
     {
         require_once ABSPATH . 'wp-admin/includes/image.php';
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
 
         $thumbnail_id = get_post_thumbnail_id($post_id);
-        if ($thumbnail_id && get_post_meta($thumbnail_id, 'image_url') === $image_url){
+        if ($thumbnail_id && get_post_meta($thumbnail_id, 'image_url') === $image_url) {
             return $thumbnail_id;
         }
-//        media_de
+
+        if ($thumbnail_id) {
+            wp_delete_attachment($thumbnail_id, true);
+        }
 
         // Download the image from the URL
         $media_id = media_sideload_image($image_url, $post_id);
@@ -148,7 +156,9 @@ class SyncProducts extends Singleton
 
         // If the image was successfully attached, set it as the post thumbnail
         if (!is_wp_error($media_id)) {
-            set_post_thumbnail($post_id, $media_id);
+            return set_post_thumbnail($post_id, $media_id);
+        } else {
+            return false;
         }
     }
 }
